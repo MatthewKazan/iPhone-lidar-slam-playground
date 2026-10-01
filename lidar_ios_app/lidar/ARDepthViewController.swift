@@ -8,7 +8,7 @@
 import UIKit
 import ARKit
 import Starscream
-import SwiftUICore
+import SwiftUI
 
 struct Point: Codable {
     var x: Float
@@ -64,6 +64,7 @@ class ARDepthViewController: UIViewController, ARSessionDelegate, ObservableObje
     var scanningTimer: DispatchSourceTimer?//Timer?
     var cameraIntrinsics: CameraIntrinsics!
     var connectionManager: ROS2ConnectionManager?
+    let rgbdUploader = RGBDUploader()
     @ObservedObject var state = ROS2AppState()
 
     override func viewDidLoad() {
@@ -135,17 +136,24 @@ class ARDepthViewController: UIViewController, ARSessionDelegate, ObservableObje
             return
         }
 
+        // one stamp for everything published from this frame, so a reader can pair the topics
+        let timeInterval = Date().timeIntervalSince1970
+        let secs = Int32(timeInterval)
+        let nsecs = Int32((timeInterval - Double(secs)) * 1_000_000_000)
+        let stamp: [String: Any] = ["secs": secs, "nsecs": nsecs]
+        let uploadRGBD = self.state.isUploadingRGBD
         DispatchQueue.global(qos: .userInitiated).async {
-            self.uploadPointCloud(from: depthData)
+            self.uploadPointCloud(from: depthData, stamp: stamp, timeInterval: timeInterval)
+            if uploadRGBD, let connection = self.connectionManager {
+                self.rgbdUploader.publish(frame: frame, stamp: stamp, via: connection)
+            }
         }
     }
     
     /// Converts a **CVPixelBuffer depth map** into a **PointCloud2 format** and sends it via WebSocket.
-    func uploadPointCloud(from depthData: CVPixelBuffer) {
+    func uploadPointCloud(from depthData: CVPixelBuffer, stamp: [String: Any], timeInterval: TimeInterval) {
         CVPixelBufferLockBaseAddress(depthData, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(depthData, .readOnly) }
-        let currentTime = Date()
-        let timeInterval = currentTime.timeIntervalSince1970
         
         let width = Int(CVPixelBufferGetWidth(depthData))
         let height = Int(CVPixelBufferGetHeight(depthData))
@@ -173,12 +181,9 @@ class ARDepthViewController: UIViewController, ARSessionDelegate, ObservableObje
 
         let base64EncodedData = pointData.base64EncodedString()
 
-        let secs = Int32(timeInterval)
-        let nsecs = Int32((timeInterval - Double(secs)) * 1_000_000_000)
-
         // Construct **ROS2 PointCloud2 message**
         let header: [String: Any] = [
-            "stamp": ["secs": secs, "nsecs": nsecs],
+            "stamp": stamp,
             "frame_id": "camera_link"
         ]
 

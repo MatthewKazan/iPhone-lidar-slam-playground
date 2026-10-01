@@ -95,6 +95,11 @@ class ROS2AppState : ObservableObject {
     @Published var isLoading: Bool = false
     @Published var numScans = 0
     @Published var isSavingInputs = false
+    // Send the RGB-D topics (RGBDUploader) beside every point cloud. App-side
+    // only: the ROS side records whatever arrives while it is saving inputs.
+    @Published var isUploadingRGBD = UserDefaults.standard.bool(forKey: "UploadRGBD") {
+        didSet { UserDefaults.standard.set(isUploadingRGBD, forKey: "UploadRGBD") }
+    }
     @Published var selectedIP = UserDefaults.standard.string(forKey: "SavedIP") ?? "172.20.10.7"
     @Published var cur_algorithm: String = ""
     @Published var cur_descriptor: String = ""

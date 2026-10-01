@@ -49,12 +49,14 @@ def launch_setup(context, *args, **kwargs):
                 'retry_interval': 0.05,  # Reduce WebSocket retry time
                 'tcp_nodelay': True,
                 'qos_overrides_pub': {
-                    '/input_pointcloud': {
+                    topic: {
                         'durability': 'TRANSIENT_LOCAL',
                         'history': 'KEEP_LAST',  # or 'KEEP_LAST'
                         'reliability': 'RELIABLE',
                         'depth': 50  # if using KEEP_LAST
                     }
+                    for topic in ['/input_pointcloud', '/rgbd/color/compressed', '/rgbd/color/camera_info',
+                                  '/rgbd/depth', '/rgbd/depth/camera_info']
                 },
             }],
         )

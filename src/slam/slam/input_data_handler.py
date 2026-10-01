@@ -8,8 +8,11 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 import rclpy.logging
+from rclpy.serialization import serialize_message
 from rclpy.service import SrvTypeResponse
 from sensor_msgs.msg import PointCloud2
+
+from slam.advertise_topic import RGBD_TOPICS
 
 from scripts.data_transfer import DataTransfer
 from scripts.paths import PATH_TO_ROSBAGS, generate_unique_bag_name
@@ -49,6 +52,15 @@ class PointClouds2Subscriber(GenericHandlerMixin, Node):
             PointCloud2, '/input_pointcloud', self.listener_callback, qos_profile,
         )
 
+
+        # The optional RGB-D set: not processed, only written to the input bag
+        # as received, header stamp and all, so a reader can pair the topics.
+        self.rgbd_subscriptions = [
+            self.create_subscription(msg_type, name,
+                                     lambda msg, name=name: self.rgbd_callback(msg, name),
+                                     qos_profile)
+            for name, msg_type in RGBD_TOPICS.items()
+        ]
 
         self.get_logger().info('PointCloud processor has been started.')
 
@@ -93,6 +105,15 @@ class PointClouds2Subscriber(GenericHandlerMixin, Node):
         except queue.Full:
             self.get_logger().warn("PointCloud queue is full! Dropping frame.")
 
+    def rgbd_callback(self, msg, topic_name: str) -> None:
+        """Bag one RGB-D message while inputs are being saved; otherwise drop it."""
+        if not self.config.is_saving_inputs:
+            return
+        if self.input_writer is None:
+            self.setup_input_rosbags()
+        stamp = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
+        self.input_writer.write(topic_name, serialize_message(msg), stamp)
+
     def reset(self, _):
         """
         Resets the subscriber node
@@ -123,6 +144,16 @@ class PointClouds2Subscriber(GenericHandlerMixin, Node):
                 serialization_format="cdr"
             )
         )
+        for name, msg_type in RGBD_TOPICS.items():
+            # "geometry_msgs/msg/PoseStamped" from the class's module path
+            package = msg_type.__module__.split('.')[0]
+            self.input_writer.create_topic(
+                rosbag2_py.TopicMetadata(
+                    name=name,
+                    type=f"{package}/msg/{msg_type.__name__}",
+                    serialization_format="cdr"
+                )
+            )
 
     def save_inputs_callback(self, request, response) -> SrvTypeResponse:
         """

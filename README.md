@@ -147,6 +147,9 @@ each scan to ROS2 via the rosbridge suite.
   - Use the **Select an Algorithm** button to select the point cloud registration algorithm to use for the SLAM system. 
   - Use the **Select a Descriptor Fn** button to select the descriptor to use for the loop closure detection.
   - Use the **Edit Other Parameters** button to edit any other parameters for the SLAM system. This includes the voxel size, and the number of keyframes to use for loop closure detection.
+  - Use the **Upload RGB + depth** toggle to also send each frame as a standard RGB-D set. The SLAM system ignores
+    these topics; they are recorded into the input bag while **Saving Inputs** is on, so a bag can be replayed as
+    posed RGB-D frames elsewhere (see [RGB-D input bags](#rgb-d-input-bags)).
 
 ---
 
@@ -198,6 +201,28 @@ For example
 ```
 
 And the inputs will be sent to the SLAM system as if they were coming from the iPhone app.
+
+### RGB-D input bags
+With the app's **Upload RGB + depth** toggle on, every frame is also published as four messages that share one
+header stamp, and the input bag records them beside `/input_pointcloud`:
+
+| topic | type | contents |
+|---|---|---|
+| `/rgbd/color/compressed` | `sensor_msgs/CompressedImage` | JPEG, 640x480 |
+| `/rgbd/color/camera_info` | `sensor_msgs/CameraInfo` | K for the 640x480 colour image |
+| `/rgbd/depth` | `sensor_msgs/Image` | `32FC1` metres, 256x192, ARKit `sceneDepth` |
+| `/rgbd/depth/camera_info` | `sensor_msgs/CameraInfo` | K for the 256x192 depth map |
+
+ARKit registers the depth map to the colour image, so the two K's differ only by the resolution ratio.
+Both images are landscape regardless of device orientation, +X right and +Y down (OpenCV pixel axes).
+No pose is recorded. Pair the topics by header stamp; the point cloud is re-stamped on arrival and cannot be paired.
+
+To record without running SLAM (no DGR or Minkowski needed), launch rosbridge, the advertiser and a bag
+recorder on their own, then scan from the app; Ctrl-C closes the bag:
+```bash
+ros2 launch slam record.launch.py                    # rosbags/input_bags/inputs_<timestamp>
+ros2 launch slam record.launch.py name:=desk_loop    # rosbags/input_bags/desk_loop
+```
 
 ---
 ## Parameters

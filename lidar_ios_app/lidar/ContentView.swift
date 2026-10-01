@@ -164,6 +164,9 @@ struct SidebarView: View {
                 }
             }
                 .padding()
+
+            Toggle("Upload RGB + depth", isOn: $state.isUploadingRGBD)
+                .padding()
             
             Divider()
             
